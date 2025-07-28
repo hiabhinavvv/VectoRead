@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+PyMuPDF
+sentence-transformers
+chromadb
+python-dotenv
+python-multipart
+pydantic
+pillow
+torch
+transformers
+numpy
+groq
+langchain-text-splitters
