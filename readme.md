@@ -1,5 +1,4 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/user-attachments/assets/a8b2c8e3-b3e1-4b10-8b1e-7b7e8c0e9a0a" alt="Vectoread Logo" width="150">
   <h1 style="font-size: 3.5em; font-weight: bold; border-bottom: none;">
     Vectoread
   </h1>
