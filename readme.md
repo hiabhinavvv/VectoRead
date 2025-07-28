@@ -1,104 +1,108 @@
-<div align="center"> <h1 style="font-size: 3.5em; font-weight: bold; border-bottom: none;"> Vectoread </h1> <p style="font-size: 1.5em; color: #888; margin-top: -10px;"> Your AI, Off the Grid. </p> <p> Deep document analysis—multimodal, private, and right on your machine. </p> </div>
-🚀 What is Vectoread?
-Vectoread is your personal, full-stack AI "librarian" that transforms dense, dusty PDF files into something truly interactive: a chat-ready, context-aware knowledge base. Whether you’re a privacy stickler, a researcher, or just sick of hunting through endless PDFs, Vectoread has your back—locally, securely, and intelligently.
+<div align="center">
+  <h1 style="font-size: 3.5em; font-weight: bold; border-bottom: none;">
+    Vectoread
+  </h1>
+  <p style="font-size: 1.5em; color: #888; margin-top: -10px;">
+    Your AI, Off the Grid.
+  </p>
+  <p>
+    An advanced, multimodal RAG pipeline for deep, private document analysis.
+  </p>
+</div>
 
-Key to it all? Vectoread doesn’t just read text—it “sees” your diagrams, deciphers images, and parses tricky tables. You ask questions in plain language and get answers synthesized from all that extracted content, so your PDFs finally talk back (usefully).
+---
 
-✨ Features at a Glance
-🧠 True Multimodal Intelligence: Not just skimming for words—Vectoread processes text, images and tables. If it’s part of your document, it’s part of the answer.
+## 🚀 About The Project
 
-🔒 Zero Cloud. 100% Private: All processing happens with your API keys or entirely offline—your documents never leave your own machine.
+Vectoread is a full-stack application that transforms dense, static PDF documents into interactive, conversational knowledge bases. It addresses the critical need for private, local-first document analysis, ensuring your data is never sent to a third-party cloud for processing.
 
-🚀 Advanced RAG Architecture:
+The system ingests any PDF and intelligently parses not just the text, but also understands the content within **images**, **diagrams**, and **tables**. Users can then ask complex questions in natural language and receive accurate, context-aware answers synthesized from all extracted modalities, creating a powerful tool for research, study, and professional analysis.
 
-Stage 1: A Vision-Language Model (VLM) interprets visuals.
+## ✨ Key Features
 
-Stage 2: An LLM synthesizes all modalities into clear, detailed answers.
+- **🧠 Multimodal Understanding**: Goes beyond simple text extraction to analyze images and parse structured tables.
+- **🔒 Privacy First**: All document processing and analysis happens through your own secure API keys or local models. Your documents are never uploaded to a third-party service.
+- **🚀 Advanced RAG Pipeline**: Utilizes a two-stage process for high-quality answers:
+    1.  A powerful Vision-Language Model (VLM) analyzes retrieved images.
+    2.  A state-of-the-art Large Language Model (LLM) synthesizes the final answer from all context.
+- **⚡ Real-time Interaction**: The FastAPI backend provides a streaming API endpoint for a responsive, real-time chat experience.
+- **🐳 Fully Containerized**: The entire application (React Frontend + FastAPI Backend) is containerized with Docker, allowing for consistent, one-command setup and deployment.
 
-⚡ Real-time Chat: With FastAPI’s streaming, responses pop up as they’re generated—no more waiting ages for a reply.
+## 🛠️ How It Works: The RAG Architecture
 
-🐳 Dockerized & Portable: Frontend and backend in tidy Docker containers. Go from zero to analysis with a single command, regardless of OS.
+Vectoread operates in two main phases:
 
-🛠️ How It Works: Under the Hood
-Vectoread runs a two-phase Retrieval-Augmented Generation (RAG) pipeline:
+#### 1. Ingestion Phase (`/ingest`)
+When a PDF is uploaded, the system performs a comprehensive analysis:
+1.  **Extract Content**: Text, images, and tables are extracted from the PDF using PyMuPDF.
+2.  **Chunk & Process**: Long text is split into smaller, overlapping chunks. Tables are converted to Markdown.
+3.  **Generate Embeddings**: The multimodal `CLIP` model converts all content chunks (text, images, tables) into vector embeddings.
+4.  **Store in Vector DB**: The content and its corresponding embeddings are stored in a local ChromaDB database for efficient retrieval.
 
-1. Ingestion (The /ingest Endpoint)
-Upload a PDF, and here’s what happens:
+#### 2. Query Phase (`/query`)
+When a user asks a question, the pipeline is activated:
+1.  **Retrieve Context**: The user's query is embedded, and a similarity search is performed on ChromaDB to find the most relevant text, tables, and images.
+2.  **Analyze Images (VLM)**: For any retrieved images, a powerful Vision-Language Model (Groq's Llama 4 Scout) is called to generate a detailed text description.
+3.  **Synthesize Answer (LLM)**: The retrieved text, tables, and the new image descriptions are combined into a rich context. This context is then sent to a powerful text-based LLM (Groq's Llama 3 70B) to generate a final, synthesized, and human-readable answer.
 
-Extraction: Text, images, and tables pulled from the PDF (using PyMuPDF).
+## 💻 Technology Stack
 
-Chunking & Formatting: Long text? Sliced for maximum retrieval. Tables become easy-to-use Markdown.
+| Area      | Technology / Model                                       |
+| :-------- | :------------------------------------------------------- |
+| **Backend** | Python, FastAPI                                          |
+| **Frontend** | React, JavaScript, CSS                                   |
+| **Containerization** | Docker, Docker Compose                                   |
+| **Vector DB** | ChromaDB                                                 |
+| **Embedding** | `sentence-transformers/clip-ViT-B-32`                    |
+| **Vision (VLM)** | Groq `meta-llama/llama-4-scout-17b-16e-instruct`         |
+| **Generation (LLM)** | Groq `llama3-70b-8192`                                   |
+| **PDF Parsing** | PyMuPDF                                                  |
+| **Text Chunking** | LangChain                                                |
 
-Vector Embeddings: Everything—text, images, tables—gets “vectorized” via the CLIP model, so the machine “remembers” what’s in each chunk.
+---
 
-Indexing: Content + vectors land in your local ChromaDB, ready for lightning-fast search.
+## ⚙️ Getting Started: Local Setup
 
-2. Querying (The /query Endpoint)
-Ask a question, get synthesized insight:
+Follow these steps to get the entire application running on your local machine.
 
-Context Retrieval: Your query is “vectorized,” then ChromaDB surfaces the most relevant passages, tables, and visuals.
+### Prerequisites
+-   Git
+-   Python 3.9+
+-   Node.js & npm
+-   Docker & Docker Compose
 
-Visual Analysis (VLM): For any images, a state-of-the-art VLM (Llama 4 Scout) generates detailed descriptions—no more squinting at JPEGs.
+### Installation & Setup
 
-Answer Synthesis (LLM): Text, tables, VLM-generated descriptions—all combined as context for a top-tier LLM (Llama 3 70B), which delivers a clear, concise answer.
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/your-username/Vectoread.git](https://github.com/your-username/Vectoread.git)
+    cd Vectoread
+    ```
 
-💻 Tech Stack
-Area	Tech / Model
-Backend	Python, FastAPI
-Frontend	React, JavaScript, CSS
-DevOps	Docker, Docker Compose
-Vector DB	ChromaDB
-Embeddings	sentence-transformers/clip-ViT-B-32
-Vision (VLM)	Groq Llama 4 Scout
-Gen (LLM)	Groq Llama 3 70B
-PDF Parsing	PyMuPDF
-Chunking	LangChain
-⚙️ Quickstart: Run Vectoread Locally
-Curious to try it out? Here’s how you get started in a few minutes:
+2.  **Set up Environment Variables:**
+    Navigate to the `backend/` directory, copy the example environment file, and add your secret API keys.
+    ```bash
+    cd backend
+    cp .env.example .env
+    nano .env  # Or use your favorite text editor
+    ```
 
-Prerequisites
-Git
+3.  **Build and Run with Docker Compose:**
+    From the **root directory** of the project, run the following command:
+    ```bash
+    docker-compose up --build -d
+    ```
+    This will build the frontend and backend images and start the containers in detached mode.
 
-Python 3.9+
+4.  **Access the Application:**
+    -   The **React Frontend** will be available at `http://localhost:5173`.
+    -   The **FastAPI Backend** will be running on `http://localhost:8000`. You can access the interactive API docs at `http://localhost:8000/docs`.
 
-Node.js & npm
+## 🛣️ Future Roadmap
 
-Docker & Docker Compose
+-   [ ] Implement a re-ranking model to further improve retrieval accuracy.
+-   [ ] Add support for more document types (e.g., `.docx`, `.pptx`).
+-   [ ] Create a chat history feature.
+-   [ ] Set up a full CI/CD pipeline with Jenkins for automated deployment.
+-   [ ] Deploy the backend to a cloud service like Render and the frontend to Vercel.
 
-1. Clone the Repo
-bash
-git clone https://github.com/your-username/Vectoread.git
-cd Vectoread
-2. Configure Secrets
-Go to backend/, copy the example .env, and insert your own API keys as needed:
-
-bash
-cd backend
-cp .env.example .env
-nano .env   # Or any editor you like
-3. Fire Up Docker Compose
-From the root project directory:
-
-bash
-docker-compose up --build -d
-This will spin up both frontend and backend containers—no dependency hell, no drama.
-
-4. Explore
-Frontend: http://localhost:5173
-
-Backend API/docs: http://localhost:8000
-
-🛣️ Roadmap & What’s Next
- Smarter retrieval with a re-ranking model (more accuracy, less noise)
-
- Support for more file types (.docx, .pptx, etc.)
-
- Chat history and conversation context
-
- CI/CD pipeline (hello automation!)
-
- Easy, one-click cloud deployment (e.g., Render, Vercel)
-
-Vectoread is always growing. Questions, ideas, bug reports? Open an issue, start a discussion, or send a PR!
-
-Why rely on expensive remote AI silos? Take back control of your documents—and let AI work for you, not the other way around.
