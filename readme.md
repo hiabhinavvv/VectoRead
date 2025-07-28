@@ -1,4 +1,4 @@
-<div align="center"> <img src="https://raw.githubusercontent.com/user-attachments/assets/a8b2c8e3-b3e1-4b10-8b1e-7b7e8c0e9a0a" alt="Vectoread Logo" width="150"> <h1 style="font-size: 3.5em; font-weight: bold; border-bottom: none;"> Vectoread </h1> <p style="font-size: 1.5em; color: #888; margin-top: -10px;"> Your AI, Off the Grid. </p> <p> Deep document analysis—multimodal, private, and right on your machine. </p> </div>
+<div align="center"> <h1 style="font-size: 3.5em; font-weight: bold; border-bottom: none;"> Vectoread </h1> <p style="font-size: 1.5em; color: #888; margin-top: -10px;"> Your AI, Off the Grid. </p> <p> Deep document analysis—multimodal, private, and right on your machine. </p> </div>
 🚀 What is Vectoread?
 Vectoread is your personal, full-stack AI "librarian" that transforms dense, dusty PDF files into something truly interactive: a chat-ready, context-aware knowledge base. Whether you’re a privacy stickler, a researcher, or just sick of hunting through endless PDFs, Vectoread has your back—locally, securely, and intelligently.
 
