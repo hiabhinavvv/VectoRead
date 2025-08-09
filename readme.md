@@ -63,7 +63,7 @@ When a user asks a question, the pipeline is activated:
 
 ## ⚙️ Getting Started: Local Setup
 
-Follow these steps to get the entire application running on your local machine.
+Follow these steps to get the entire application running on your local machine or computer.
 
 ### Prerequisites
 -   Git
