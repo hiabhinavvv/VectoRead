@@ -37,12 +37,17 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/vectoread-frontend:latest
 
-  # --- JOB 2: DEPLOY FRONTEND TO VERCEL (CD) ---
+# --- JOB 2: DEPLOY FRONTEND TO VERCEL (CD) ---
   deploy-frontend:
     name: Deploy Frontend to Vercel
     runs-on: ubuntu-latest
-    # This job will only run if the 'build-and-push-images' job is successful
     needs: build-and-push-images
+
+    # Add this env block to make the secrets available to all steps in this job
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
     steps:
       - name: Checkout repository
@@ -51,16 +56,15 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
-      - name: Pull Vercel Environment Information
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        working-directory: ./frontend
+      # The Vercel CLI will now automatically use the environment variables
+      # to link to the correct project, so the 'pull' command is no longer needed.
 
       - name: Build Project Artifacts
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod
         working-directory: ./frontend
 
       - name: Deploy Project Artifacts to Vercel
-        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod
         working-directory: ./frontend
 
   # --- JOB 3: DEPLOY BACKEND TO HUGGING FACE (CD) ---
