@@ -1,65 +1,83 @@
-# Name for your GitHub Actions workflow
-name: CI/CD - Build, Push, and Deploy
+name: CI/CD - Build & Deploy Services
 
-# This workflow runs automatically on any push event to the "main" branch
+# This workflow runs automatically on any push to the "main" branch
 on:
   push:
     branches: [ "main" ]
 
 jobs:
   # --- JOB 1: CONTINUOUS INTEGRATION (Build & Push Docker Images) ---
-  build-and-push:
+  build-and-push-images:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checks out your repository code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Log in to Docker Hub using secrets
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Step 3: Build and push the Backend image
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          file: ./backend/Dockerfile # Corrected parameter name
+          file: ./backend/Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/vectoread-backend:latest
 
-      # Step 4: Build and push the Frontend image
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          file: ./frontend/Dockerfile # Corrected parameter name
+          file: ./frontend/Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/vectoread-frontend:latest
 
-  # --- JOB 2: CONTINUOUS DEPLOYMENT (Deploy Backend to Hugging Face) ---
+  # --- JOB 2: DEPLOY FRONTEND TO VERCEL (CD) ---
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
+    runs-on: ubuntu-latest
+    # This job will only run if the 'build-and-push-images' job is successful
+    needs: build-and-push-images
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./frontend
+
+      - name: Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./frontend
+
+      - name: Deploy Project Artifacts to Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./frontend
+
+  # --- JOB 3: DEPLOY BACKEND TO HUGGING FACE (CD) ---
   deploy-backend:
     name: Deploy Backend to Hugging Face
-    # This job will only run if the 'build-and-push' job completes successfully
-    needs: build-and-push
     runs-on: ubuntu-latest
-
+    # This job will also only run if the 'build-and-push-images' job is successful
+    needs: build-and-push-images
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Push to Hugging Face Space
         env:
-          # This makes your HF_TOKEN secret available as an environment variable
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # This command pushes ONLY the 'backend' subdirectory to your Space.
-          # The URL is constructed with your username and the HF_TOKEN for authentication.
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          git subtree push --prefix backend https://hiabhinavvv:${HF_TOKEN}@huggingface.co/spaces/hiabhinavvv/vectoread-backend main
+          git subtree push --prefix backend https://${{ secrets.HF_USERNAME }}:${{ secrets.HF_TOKEN }}@huggingface.co/spaces/${{ secrets.HF_USERNAME }}/${{ secrets.HF_SPACE_NAME }} main
