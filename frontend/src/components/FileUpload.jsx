@@ -26,6 +26,8 @@ const FileUpload = ({ onUploadSuccess }) => {
     validateFile(e.dataTransfer.files[0]);
   };
   const handleDropZoneClick = () => fileInputRef.current.click();
+
+  const API_URL = import.meta.env.VITE_API_BASE_URL || "https://127.0.0.1:8000"
   
   const handleUpload = async () => {
     if (!selectedFile) return;
@@ -36,7 +38,7 @@ const FileUpload = ({ onUploadSuccess }) => {
     formData.append('file', selectedFile);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/ingest', {
+      const response = await fetch('${API_URL}/ingest', {
         method: 'POST',
         body: formData,
       });

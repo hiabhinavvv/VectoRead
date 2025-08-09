@@ -12,6 +12,8 @@ const ChatInterface = () => {
     }
   }, [messages]);
 
+  const API_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!query.trim() || isStreaming) return;
@@ -24,7 +26,7 @@ const ChatInterface = () => {
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/query', {
+      const response = await fetch('${API_URL}/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query }),
