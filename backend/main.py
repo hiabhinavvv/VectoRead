@@ -16,6 +16,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+origins = [
+    "http://localhost:5173",  # For local development
+    "https://vecto-read.vercel.app/", # <-- IMPORTANT: Replace with your actual Vercel URL
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
