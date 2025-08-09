@@ -38,7 +38,7 @@ const FileUpload = ({ onUploadSuccess }) => {
     formData.append('file', selectedFile);
 
     try {
-      const response = await fetch('${API_URL}/ingest', {
+      const response = await fetch(`${API_URL}/ingest`, {
         method: 'POST',
         body: formData,
       });
