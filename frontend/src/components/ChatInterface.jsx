@@ -26,7 +26,7 @@ const ChatInterface = () => {
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
     try {
-      const response = await fetch('${API_URL}/query', {
+      const response = await fetch(`${API_URL}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query }),
