@@ -2,12 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+RUN useradd --create-home appuser
+USER appuser
 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --chown=appuser:appuser requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-COPY . .
+ENV PATH="/home/appuser/.local/bin:${PATH}"
 
-EXPOSE 8000
+COPY --chown=appuser:appuser . .
 
-CMD [ "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000" ]
+EXPOSE 7860
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
