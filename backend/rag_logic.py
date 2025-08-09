@@ -105,7 +105,7 @@ def analyze_image_with_groq(image_path: str):
         prompt = "Describe this image in detail. If it's a diagram, explain its components, relationships, and the process it illustrates."
         
         completion = groq_client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model="meta-llama/llama-4-maverick-17b-128e-instruct",
             messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": image_url}}]}]
         )
         return completion.choices[0].message.content if completion.choices else "VLM analysis failed."

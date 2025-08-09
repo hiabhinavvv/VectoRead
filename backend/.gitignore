@@ -1,2 +1,4 @@
 __pycache__
 .env
+chroma_db
+extracted_images
