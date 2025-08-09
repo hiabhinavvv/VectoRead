@@ -19,7 +19,6 @@ collection = None
 groq_client = None
 
 
-
 def extract_content_from_pdf(pdf_path: str):
     doc = fitz.open(pdf_path)
     text, images, tables = "", [], []

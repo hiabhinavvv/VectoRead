@@ -27,7 +27,7 @@ const FileUpload = ({ onUploadSuccess }) => {
   };
   const handleDropZoneClick = () => fileInputRef.current.click();
 
-  const API_URL = import.meta.env.VITE_API_BASE_URL || "https://127.0.0.1:8000"
+  const API_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
   
   const handleUpload = async () => {
     if (!selectedFile) return;
