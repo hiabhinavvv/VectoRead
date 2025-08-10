@@ -42,9 +42,11 @@ def generate_embeddings(text_chunks, images, tables, model):
     table_embeddings = model.encode(table_markdowns) if table_markdowns else np.array([])
     return text_embeddings, image_embeddings, table_embeddings
 
-def store_in_chromadb(text_chunks, text_embeddings, images, image_embeddings, tables, table_embeddings):
+def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, image_embeddings, tables, table_embeddings):
     client = chromadb.PersistentClient(path="./chroma_db")
-    collection = client.get_or_create_collection(name="pdf_multimodal_embeddings")
+    
+    collection = client.get_or_create_collection(name=session_id)
+    
     image_dir = "extracted_images"
     os.makedirs(image_dir, exist_ok=True)
 
@@ -73,7 +75,8 @@ def store_in_chromadb(text_chunks, text_embeddings, images, image_embeddings, ta
         metadatas.append({'type': 'table', 'page': page_num})
 
     if ids:
-        collection.upsert(ids=ids, embeddings=embeddings_list, documents=documents, metadatas=metadatas)
+        collection.add(ids=ids, embeddings=embeddings_list, documents=documents, metadatas=metadatas)
+    
     return collection.count()
 
 def load_query_models():
@@ -111,14 +114,21 @@ def analyze_image_with_groq(image_path: str):
     except Exception as e:
         return f"Error during Groq vision call: {e}"
 
-def process_query_and_generate(query: str):
-    """Main RAG function: retrieves context and yields streaming LLM response."""
-    if not all([collection, embedding_model, groq_client]):
-        yield "Error: Models or DB not loaded. Please check server startup logs or ingest a document first."
+def process_query_and_generate(query: str, session_id: str):
+    try:
+        client = chromadb.PersistentClient(path="./chroma_db")
+        session_collection = client.get_collection(name=session_id)
+    except Exception as e:
+        yield f"Error: Could not find a database for the provided session. Please upload a document first. Details: {e}"
+        return
+
+    if not all([session_collection, embedding_model, groq_client]):
+        yield "Error: Models not loaded correctly. Please check server startup logs."
         return
 
     query_embedding = embedding_model.encode([query]).tolist()
-    results = collection.query(query_embeddings=query_embedding, n_results=10)
+    
+    results = session_collection.query(query_embeddings=query_embedding, n_results=10)
     
     context_parts = []
     if 'ids' in results and results['ids'][0]:

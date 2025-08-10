@@ -5,8 +5,10 @@ import ChatInterface from "./components/ChatInterface";
 import "./App.css"
 
 export default function App() {
+  const [sessionId, setSessionId] = useState(null);
   const [appState, setAppState] = useState('uploading'); 
-  const handleUploadSuccess = () => {
+  const handleIngestSuccess = (newSessionId) => {
+    setSessionId(newSessionId)
     setAppState('chatting');
   };
 
@@ -15,9 +17,9 @@ export default function App() {
       <Header />
       <main className="main-content">
         {appState === 'uploading' ? (
-          <FileUpload onUploadSuccess={handleUploadSuccess} />
+          <FileUpload onUploadSuccess={handleIngestSuccess} />
         ) : (
-          <ChatInterface />
+          <ChatInterface sessionId={sessionId}/>
         )}
       </main>
     </div>

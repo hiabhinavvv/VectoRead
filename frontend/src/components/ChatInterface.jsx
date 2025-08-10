@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const ChatInterface = () => {
+const ChatInterface = ({sessionId}) => {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -29,7 +29,9 @@ const ChatInterface = () => {
       const response = await fetch(`${API_URL}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query }),
+        body: JSON.stringify({ query: query,
+          session_id: sessionId
+         }),
       });
 
       if (!response.body) return;

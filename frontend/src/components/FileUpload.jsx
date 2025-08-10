@@ -50,7 +50,12 @@ const FileUpload = ({ onUploadSuccess }) => {
 
       const result = await response.json();
       console.log('Upload successful:', result);
-      onUploadSuccess(); // Tell the parent component to switch views
+
+      if (result.session_id) {
+        onUploadSuccess(result.session_id);
+      } else {
+        throw new Error("Session ID was not returned by the server")
+      }
       
     } catch (err) {
       console.error('Upload error:', err);
@@ -64,7 +69,6 @@ const FileUpload = ({ onUploadSuccess }) => {
       {isProcessing ? (
         <div>
           <p>Processing your document... This may take a moment.</p>
-          {/* You could add a spinner animation here */}
         </div>
       ) : (
         <>
