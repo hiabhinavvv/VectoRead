@@ -79,9 +79,6 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred during ingestion: {str(e)}")
-    finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
 
 
 @app.post("/query")
