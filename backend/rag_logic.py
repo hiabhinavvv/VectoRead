@@ -19,8 +19,9 @@ collection = None
 groq_client = None
 
 
-def extract_content_from_pdf(pdf_path: str):
-    doc = fitz.open(pdf_path)
+def extract_content_from_pdf(file_content: bytes):
+    doc = fitz.open(stream=file_content, filetype="pdf")
+    
     text, images, tables = "", [], []
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
