@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import os
 import shutil
 import rag_logic
+import uuid
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,7 +19,7 @@ app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://localhost:5173",  # For local development
-    "https://vecto-read.vercel.app/", # <-- IMPORTANT: Replace with your actual Vercel URL
+    "https://vecto-read.vercel.app/", 
 ]
 
 app.add_middleware(
@@ -31,10 +32,12 @@ app.add_middleware(
 
 class QueryRequest(BaseModel):
     query: str
+    session_id: str
 
 class IngestResponse(BaseModel):
     message: str
     item_count: int
+    session_id: str
 
 
 @app.get("/")
@@ -46,17 +49,13 @@ async def ingest_pdf(file: UploadFile = File(...)):
     if file.content_type != 'application/pdf':
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a PDF.")
 
-    temp_dir = "temp_uploads"
-    os.makedirs(temp_dir, exist_ok=True)
-    file_path = os.path.join(temp_dir, file.filename)
-    
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        session_id = str(uuid.uuid4())
+        print(f"New session started: {session_id}")
 
-        print(f"Starting ingestion for {file.filename}...")
+        file_content = await file.read()
         
-        text, images, tables = rag_logic.extract_content_from_pdf(file_path)
+        text, images, tables = rag_logic.extract_content_from_pdf(file_content)
         
         text_splitter = rag_logic.RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         text_chunks = text_splitter.split_text(text)
@@ -66,11 +65,17 @@ async def ingest_pdf(file: UploadFile = File(...)):
         text_emb, img_emb, tbl_emb = rag_logic.generate_embeddings(text_chunks, images, tables, embedding_model)
         
         print("Storing in ChromaDB...")
-        item_count = rag_logic.store_in_chromadb(text_chunks, text_emb, images, img_emb, tables, tbl_emb)
+        item_count = rag_logic.store_in_chromadb(
+            session_id, text_chunks, text_emb, images, img_emb, tables, tbl_emb
+        )
         
         rag_logic.load_query_models()
 
-        return IngestResponse(message=f"Successfully ingested '{file.filename}'", item_count=item_count)
+        return IngestResponse(
+            message=f"Successfully ingested '{file.filename}'", 
+            item_count=item_count,
+            session_id=session_id
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred during ingestion: {str(e)}")
@@ -82,7 +87,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
 @app.post("/query")
 async def handle_query(request: QueryRequest):
     return StreamingResponse(
-        rag_logic.process_query_and_generate(request.query), 
+        rag_logic.process_query_and_generate(request.query, request.session_id), 
         media_type="text/event-stream"
     )
 
