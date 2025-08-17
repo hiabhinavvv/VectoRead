@@ -1,0 +1,50 @@
+name: CI/CD - Deploy Frontend and Backend
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel Project Settings
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./frontend
+
+      - name: Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./frontend
+
+      - name: Deploy Project to Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./frontend
+
+  # --- JOB 2: DEPLOY BACKEND TO HUGGING FACE SPACES ---
+  deploy-backend:
+    name: Deploy Backend to Hugging Face
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Push to Hugging Face Space
+        env:
+          # Make the HF token available as an environment variable
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Configure git with a bot user
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
+          # This command pushes ONLY the 'backend' subdirectory to your Space's main branch.
+          # The URL is constructed with your username and the HF_TOKEN for authentication.
+          git subtree push --prefix backend https://${{ secrets.HF_USERNAME }}:${HF_TOKEN}@huggingface.co/spaces/${{ secrets.HF_USERNAME }}/${{ secrets.HF_SPACE_NAME }} main
