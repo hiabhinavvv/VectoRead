@@ -151,7 +151,7 @@ def process_query_and_generate(query: str, session_id: str):
         Based on the retrieved context from the vector database, answer the following question in an exam-style format:
 
         Question: "query"
-        Follow these instructions:
+        Follow the given instructions:
 
         Strictly base your answer on the retrieved context, but rewrite in your own words to sound like a knowledgeable student.
 
