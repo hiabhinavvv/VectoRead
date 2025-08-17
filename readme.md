@@ -14,7 +14,7 @@
 
 ## 🚀 About The Project
 
-Vectoread is a full-stack application that transforms dense, static PDF documents into interactive, conversational knowledge bases. It addresses the critical need for private, local-first document analysis, ensuring your data is never sent to a third-party cloud for processing.
+Vectoread is a full-stack application that transforms static PDF documents into interactive, conversational knowledge bases. It addresses the critical need for private, local-first document analysis, ensuring your data is never sent to a third-party cloud for processing.
 
 The system ingests any PDF and intelligently parses not just the text, but also understands the content within **images**, **diagrams**, and **tables**. Users can then ask complex questions in natural language and receive accurate, context-aware answers synthesized from all extracted modalities, creating a powerful tool for research, study, and professional analysis.
 
