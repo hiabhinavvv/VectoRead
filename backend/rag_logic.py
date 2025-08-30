@@ -37,7 +37,7 @@ def extract_content_from_pdf(file_content: bytes):
 
 def generate_embeddings(text_chunks, images, tables, model):
     text_embeddings = model.encode(text_chunks)
-    image_objects = [img for img, _ in images]
+    image_objects = [img.convert("RGB") for img, _ in images]
     image_embeddings = model.encode(image_objects) if image_objects else np.array([])
     table_markdowns = [tbl for tbl, _ in tables]
     table_embeddings = model.encode(table_markdowns) if table_markdowns else np.array([])
