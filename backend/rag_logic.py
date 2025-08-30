@@ -48,7 +48,7 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
     
     collection = client.get_or_create_collection(name=session_id)
     
-    image_dir = "extracted_images"
+    image_dir = "/tmp/extracted_images"
     os.makedirs(image_dir, exist_ok=True)
 
     ids, embeddings_list, documents, metadatas = [], [], [], []
@@ -84,16 +84,7 @@ def load_query_models():
     global embedding_model, collection, groq_client
     if embedding_model is None:
         print("Loading embedding model...")
-        embedding_model = SentenceTransformer('clip-ViT-B-32')
-    if collection is None:
-        print("Connecting to ChromaDB...")
-        client = chromadb.PersistentClient(path="./chroma_db")
-        try:
-            collection = client.get_collection(name="pdf_multimodal_embeddings")
-            print(f"Connected to collection with {collection.count()} items.")
-        except Exception:
-            print("Collection not found. It will be created upon first ingestion.")
-            collection = None 
+        embedding_model = SentenceTransformer('clip-ViT-B-32') 
             
     if groq_client is None:
         print("Initializing Groq client...")

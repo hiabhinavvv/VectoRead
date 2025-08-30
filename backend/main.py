@@ -61,8 +61,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
         text_chunks = text_splitter.split_text(text)
         
         print("Generating embeddings...")
-        embedding_model = rag_logic.SentenceTransformer('clip-ViT-B-32')
-        text_emb, img_emb, tbl_emb = rag_logic.generate_embeddings(text_chunks, images, tables, embedding_model)
+        text_emb, img_emb, tbl_emb = rag_logic.generate_embeddings(text_chunks, images, tables, rag_logic.embedding_model)
         
         print("Storing in ChromaDB...")
         item_count = rag_logic.store_in_chromadb(
