@@ -60,14 +60,21 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
         metadatas.append({'type': 'text'})
 
     for i, (image, page_num) in enumerate(images):
-        image_id = f"image_{i}"
-        image_path = os.path.join(image_dir, f"{image_id}.png")
-        image.save(image_path, 'PNG')
-        ids.append(image_id)
-        if image_embeddings.size > 0:
-            embeddings_list.append(image_embeddings[i].tolist())
-        documents.append(image_path)
-        metadatas.append({'type': 'image', 'page': page_num})
+        try:
+            image_id = f"image_{i}"
+            image_path = os.path.join(image_dir, f"{image_id}.png")
+            
+            # Ensure image is valid before saving
+            if image.width > 0 and image.height > 0:
+                image.save(image_path, 'PNG')
+                ids.append(image_id)
+                if image_embeddings.size > 0:
+                    embeddings_list.append(image_embeddings[i].tolist())
+                documents.append(image_path)
+                metadatas.append({'type': 'image', 'page': page_num})
+        except Exception as e:
+            # If a single image fails, log the error and continue
+            print(f"WARNING: Skipping a problematic image on page {page_num}. Error: {e}")
         
     for i, (table_markdown, page_num) in enumerate(tables):
         ids.append(f"table_{i}")
