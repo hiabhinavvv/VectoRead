@@ -169,7 +169,7 @@ def process_query_and_generate(query: str, session_id: str):
     try:
         stream = groq_client.chat.completions.create(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             temperature=0.5,
             max_tokens=1024,
             top_p=1,
