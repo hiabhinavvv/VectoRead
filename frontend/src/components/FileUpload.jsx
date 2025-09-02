@@ -95,7 +95,7 @@ const FileUpload = ({ onUploadSuccess }) => {
             onClick={handleUpload}
             disabled={!selectedFile}
           >
-            Upload & Ingest
+            Upload
           </button>
         </>
       )}
