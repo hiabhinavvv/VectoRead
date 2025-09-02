@@ -132,38 +132,35 @@ def process_query_and_generate(query: str, session_id: str):
     context_parts = []
     if 'ids' in results and results['ids'][0]:
         for i in range(len(results['ids'][0])):
+            doc_id = results['ids'][0][i]
             metadata, document = results['metadatas'][0][i], results['documents'][0][i]
             if metadata['type'] == 'image':
                 print(f"  > Analyzing image: {document}...")
                 desc = analyze_image_with_groq(document)
-                context_parts.append(f"Source: Image Description\nContent: {desc}")
+                context_parts.append(f"Source: {doc_id}\nContent: {desc}")
             elif metadata['type'] == 'table':
                 table = html.unescape(document).replace('<br>', '\n')
-                context_parts.append(f"Source: Table\nContent:\n{table}")
+                context_parts.append(f"Source: {doc_id}\nContent:\n{table}")
             else:
-                context_parts.append(f"Source: Text Chunk\nContent: {document}")
+                context_parts.append(f"Source: {doc_id}\nContent: {document}")
     
     formatted_context = "\n---\n".join(context_parts)
     
-    system_prompt = """You are an expert-level AI assistant trained to help students understand and explain complex research papers clearly and accurately. 
-        Based on the retrieved context from the vector database, answer the following question in an exam-style format:
+    system_prompt = """You are a highly intelligent expert AI assistant. Your primary purpose is to analyze and synthesize information from a provided context to answer a user's question with depth, clarity, and precision.
 
-        Question: "query"
-        Follow these instructions:
+Follow these instructions meticulously:
 
-        Strictly base your answer on the retrieved context, but rewrite in your own words to sound like a knowledgeable student.
+1.  **Comprehensive Analysis:** Your answer must be based *only* on the provided context, which may include text chunks, tables, and detailed descriptions of images or diagrams. Synthesize information from all relevant sources to form a complete picture.
 
-        Use precise terminology from the source paper (especially if it's a technical concept).
+2.  **Expert Tone:** Rewrite the information in your own words to sound like a subject-matter expert. Use precise terminology found in the context, but explain it clearly.
 
-        If mathematical expressions or algorithms are involved, include them concisely using inline math or pseudocode.
+3.  **Data-Rich Responses:** If the context contains data, numbers, or specific examples, you must include them in your answer to support your claims. If there are formulas or code, represent them accurately.
 
-        Avoid vague generalizations — focus on clarity, technical correctness, and relevance to the specific paper.
+4.  **Structured and Deep Answers:** Avoid vague or superficial responses. If the question asks "what," "why," or "how," provide a well-structured answer with logical flow and sufficient detail. Do not add fluff or filler.
 
-        If the question asks "what", "why", or "how", answer with structure and depth, not fluff.
+5.  **Cite Your Sources:** After every key piece of information, you MUST cite the source using the format [Source: source_id]. This is a critical requirement.
 
-        Keep the answer exam-appropriate and ~150 words, unless the query explicitly asks for more.
-
-        Your goal: provide a concise, 10/10 academic answer that reflects deep understanding of the original research.""" 
+Your goal is to act as a world-class analyst, providing answers that are not only correct but also insightful, well-supported, and directly derived from the source material.""" 
     user_prompt = f"CONTEXT:\n---\n{formatted_context}\n---\n\nQUESTION:\n{query}"
     
     try:
