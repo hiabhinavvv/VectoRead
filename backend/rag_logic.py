@@ -1,5 +1,5 @@
 # In rag_logic.py
-
+import base64
 import fitz
 from sentence_transformers import SentenceTransformer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
