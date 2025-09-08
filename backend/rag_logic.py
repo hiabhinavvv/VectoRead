@@ -122,16 +122,34 @@ def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_m
 # --- Part 2: Querying Pipeline ---
 
 def analyze_image_with_groq(image_path: str, groq_client: Groq):
-    # This function remains the same.
+    """
+    Generates a description of an image using Groq's LLaVA model.
+    """
     try:
         with open(image_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-        image_url = f"data:image/png;base64,{base64_image}"
-        prompt = "Describe this image in detail..."
-        completion = groq_client.chat.completions.create(...)
-        return completion.choices[0].message.content
+            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        image_url = f"data:image/png;base64,{encoded_image}"
+        prompt = "Describe this image in detail. If it's a diagram, explain its components, relationships, and the process it illustrates."
+        
+        completion = groq_client.chat.completions.create(
+            # --- THE FIX: Use Groq's dedicated vision model ---
+            model="meta-llama/llama-4-scout-17b-16e-instruct", 
+            
+            messages=[
+                {
+                    "role": "user", 
+                    "content": [
+                        {"type": "text", "text": prompt}, 
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    ]
+                }
+            ]
+        )
+        return completion.choices[0].message.content if completion.choices else "VLM analysis failed."
     except Exception as e:
         return f"Error during Groq vision call: {e}"
+
 
 def process_query_and_generate(query: str, session_id: str, text_embedding_model, image_embedding_model, groq_client):
     """
