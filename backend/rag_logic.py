@@ -196,14 +196,28 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
     formatted_context = "\n---\n".join(context_parts)
     
     # 4. Generate the final response with the LLM
-    system_prompt = "You are an expert AI assistant. Answer the user's question based ONLY on the provided context, which includes text, tables, and image descriptions. Cite your sources using the format [Source: source_id]."
+    system_prompt = """You are a highly intelligent expert AI assistant. Your primary purpose is to analyze and synthesize information from a provided context to answer a user's question with depth, clarity, and precision.
+
+Follow these instructions meticulously:
+
+1.  **Comprehensive Analysis:** Your answer must be based *only* on the provided context, which may include text chunks, tables, and detailed descriptions of images or diagrams. Synthesize information from all relevant sources to form a complete picture.
+
+2.  **Expert Tone:** Rewrite the information in your own words to sound like a subject-matter expert. Use precise terminology found in the context, but explain it clearly.
+
+3.  **Data-Rich Responses:** If the context contains data, numbers, or specific examples, you must include them in your answer to support your claims. If there are formulas or code, represent them accurately.
+
+4.  **Structured and Deep Answers:** Avoid vague or superficial responses. If the question asks "what," "why," or "how," provide a well-structured answer with logical flow and sufficient detail. Do not add fluff or filler.
+
+5.  **Cite Your Sources:** After every key piece of information, you MUST cite the source using the format [Source: source_id]. This is a critical requirement.
+
+Your goal is to act as a world-class analyst, providing answers that are not only correct but also insightful, well-supported, and directly derived from the source material.""" 
     user_prompt = f"CONTEXT:\n---\n{formatted_context}\n---\n\nQUESTION:\n{query}"
     
     print("Generating final answer...")
     try:
         stream = groq_client.chat.completions.create(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             temperature=0.5,
             max_tokens=2048,
             stream=True,
