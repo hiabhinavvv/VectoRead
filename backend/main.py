@@ -1,5 +1,3 @@
-# In main.py
-
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -16,7 +14,6 @@ model_cache = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load BOTH models at startup
     print("INFO:     Loading models...")
     model_cache["text_model"] = SentenceTransformer('all-MiniLM-L6-v2')
     model_cache["image_model"] = SentenceTransformer('clip-ViT-B-32')
@@ -28,7 +25,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# CORS middleware and Pydantic models remain the same...
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 class QueryRequest(BaseModel): query: str; session_id: str
 class IngestResponse(BaseModel): message: str; item_count: int; session_id: str
@@ -45,7 +41,6 @@ async def ingest_pdf(file: UploadFile = File(...)):
         session_id = str(uuid.uuid4())
         file_content = await file.read()
         
-        # Pass BOTH models to the orchestrator
         item_count = rag_logic.process_and_store_pdf(
             session_id=session_id,
             file_content=file_content,
@@ -59,7 +54,6 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
 @app.post("/query")
 async def handle_query(request: QueryRequest):
-    # Pass BOTH embedding models and the Groq client to the query function
     response_generator = rag_logic.process_query_and_generate(
         query=request.query, 
         session_id=request.session_id,

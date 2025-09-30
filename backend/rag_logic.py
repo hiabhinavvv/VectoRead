@@ -1,4 +1,3 @@
-# In rag_logic.py
 import base64
 import fitz
 from sentence_transformers import SentenceTransformer
@@ -13,10 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- Part 1: Data Ingestion Pipeline ---
-
 def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
-    # This function remains the same - it's already stable.
     doc = fitz.open(stream=file_content, filetype="pdf")
     full_text, images, tables = "", [], []
     for page_num in range(len(doc)):
@@ -41,7 +37,6 @@ def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
     return full_text, images, tables
 
 def generate_embeddings(text_chunks, images, tables, text_model, image_model):
-    # This function is correct for handling two models.
     text_embeddings = text_model.encode(text_chunks) if text_chunks else np.array([])
     table_markdowns = [tbl for tbl, _ in tables]
     table_embeddings = text_model.encode(table_markdowns) if table_markdowns else np.array([])
@@ -50,16 +45,11 @@ def generate_embeddings(text_chunks, images, tables, text_model, image_model):
     return text_embeddings, image_embeddings, table_embeddings
 
 def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, image_embeddings, tables, table_embeddings):
-    """
-    Stores content into TWO separate ChromaDB collections.
-    """
     client = chromadb.PersistentClient(path="./chroma_db")
     image_dir = f"/tmp/extracted_images/{session_id}"
     os.makedirs(image_dir, exist_ok=True)
     
     total_items = 0
-
-    # --- Store Text and Tables in the TEXT Collection ---
     if len(text_chunks) > 0 or len(tables) > 0:
         collection_text = client.get_or_create_collection(name=f"{session_id}_text")
         ids_text, embeddings_text, docs_text, metadatas_text = [], [], [], []
@@ -79,7 +69,6 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
         collection_text.add(ids=ids_text, embeddings=embeddings_text, documents=docs_text, metadatas=metadatas_text)
         total_items += collection_text.count()
 
-    # --- Store Images in the IMAGE Collection ---
     if len(images) > 0:
         collection_images = client.get_or_create_collection(name=f"{session_id}_images")
         ids_img, embeddings_img, docs_img, metadatas_img = [], [], [], []
@@ -102,7 +91,6 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
     return total_items
 
 def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_model, image_embedding_model):
-    # This orchestrator function remains largely the same.
     print("--- Starting PDF Ingestion (Dual Collection) ---")
     full_text, images, tables = extract_content_from_pdf(file_content)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
@@ -119,12 +107,8 @@ def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_m
     print(f"--- Successfully stored {count} items across collections for session '{session_id}' ---")
     return count
 
-# --- Part 2: Querying Pipeline ---
 
 def analyze_image_with_groq(image_path: str, groq_client: Groq):
-    """
-    Generates a description of an image using Groq's LLaVA model.
-    """
     try:
         with open(image_path, "rb") as image_file:
             encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -133,7 +117,6 @@ def analyze_image_with_groq(image_path: str, groq_client: Groq):
         prompt = "Describe this image in detail. If it's a diagram, explain its components, relationships, and the process it illustrates."
         
         completion = groq_client.chat.completions.create(
-            # --- THE FIX: Use Groq's dedicated vision model ---
             model="meta-llama/llama-4-scout-17b-16e-instruct", 
             
             messages=[
@@ -152,14 +135,10 @@ def analyze_image_with_groq(image_path: str, groq_client: Groq):
 
 
 def process_query_and_generate(query: str, session_id: str, text_embedding_model, image_embedding_model, groq_client):
-    """
-    Processes a query by searching BOTH collections and merging the results.
-    """
     print("\n--- Processing Query (Dual Collection) ---")
     client = chromadb.PersistentClient(path="./chroma_db")
     context_parts = []
     
-    # --- 1. Query the TEXT collection ---
     try:
         collection_text = client.get_collection(name=f"{session_id}_text")
         query_embedding_text = text_embedding_model.encode([query]).tolist()
@@ -173,10 +152,8 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
     except Exception as e:
         print(f"Could not query text collection for session '{session_id}': {e}")
 
-    # --- 2. Query the IMAGE collection ---
     try:
         collection_images = client.get_collection(name=f"{session_id}_images")
-        # Use the image model (CLIP) to embed the text query for image search
         query_embedding_image = image_embedding_model.encode([query]).tolist()
         results_images = collection_images.query(query_embeddings=query_embedding_image, n_results=5)
         
@@ -194,7 +171,6 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
         yield "Could not find relevant context to answer the question."
         return
         
-    # --- 3. Combine and generate response ---
     formatted_context = "\n---\n".join(context_parts)
     system_prompt = """You are a highly intelligent expert AI assistant. Your primary purpose is to analyze and synthesize information from a provided context to answer a user's question with depth, clarity, and precision.
 
