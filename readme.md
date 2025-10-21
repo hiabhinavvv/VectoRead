@@ -109,7 +109,7 @@ LangChain (RecursiveCharacterTextSplitter)
 🚀 Access the Live Application
 You can interact with the live, hosted version of VectoRead here:
 
-➡️ VectoRead Live Demo
+➡️ vecto-read.vercel.app
 
 Simply visit the link, upload a PDF, and start asking questions!
 
