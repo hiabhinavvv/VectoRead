@@ -14,7 +14,7 @@ load_dotenv()
 
 def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
     doc = fitz.open(stream=file_content, filetype="pdf")
-    page_texts, images, tables = "", [], []
+    page_texts, images, tables = [], [], []
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
         page_texts.append((page.get_text(), page_num))
