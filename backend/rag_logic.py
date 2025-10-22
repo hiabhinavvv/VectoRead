@@ -157,7 +157,7 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
                 page_num = metadata.get('page', -1) + 1
                 doc_type = metadata.get('type', 'data')
                 citation = f"Source: Page {page_num} ({doc_type})"
-                context_parts.append(f"Source: {doc_id}\nContent: {document}")
+                context_parts.append(f"Source: {citation}\nContent: {document}")
     except Exception as e:
         print(f"Could not query text collection for session '{session_id}': {e}")
 
