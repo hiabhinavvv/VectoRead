@@ -108,7 +108,7 @@ def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_m
     )
     
     count = store_in_chromadb(
-        session_id, all_text_chunks, text_embeds, images, image_embeds, tables, table_embeds
+        session_id, all_text_chunks, text_embeds, images, image_embeds, tables, table_embeds, all_text_metadatas
     )
     print(f"--- Successfully stored {count} items across collections for session '{session_id}' ---")
     return count
@@ -155,9 +155,9 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
                 document = results_text['documents'][0][i]
                 metadata = results_text['metadatas'][0][i]
                 page_num = metadata.get('page', -1) + 1
-                doc_type = metadata.get('type', 'data')
+                doc_type = metadata.get('type', 'text')
                 citation = f"Source: Page {page_num} ({doc_type})"
-                context_parts.append(f"Source: {citation}\nContent: {document}")
+                context_parts.append(f"{citation}\nContent: {document}")
     except Exception as e:
         print(f"Could not query text collection for session '{session_id}': {e}")
 
