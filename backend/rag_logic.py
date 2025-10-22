@@ -14,10 +14,10 @@ load_dotenv()
 
 def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
     doc = fitz.open(stream=file_content, filetype="pdf")
-    full_text, images, tables = "", [], []
+    page_texts, images, tables = "", [], []
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
-        full_text += page.get_text() + "\n"
+        page_texts.append((page.get_text(), page_num))
         for img_index, img in enumerate(page.get_images(full=True)):
             xref = img[0]
             try:
@@ -34,7 +34,7 @@ def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
                 continue
         for table in page.find_tables():
             tables.append((table.to_markdown(clean=True), page_num))
-    return full_text, images, tables
+    return page_texts, images, tables
 
 def generate_embeddings(text_chunks, images, tables, text_model, image_model):
     text_embeddings = text_model.encode(text_chunks) if text_chunks else np.array([])
@@ -44,7 +44,7 @@ def generate_embeddings(text_chunks, images, tables, text_model, image_model):
     image_embeddings = image_model.encode(image_objects) if image_objects else np.array([])
     return text_embeddings, image_embeddings, table_embeddings
 
-def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, image_embeddings, tables, table_embeddings):
+def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, image_embeddings, tables, table_embeddings, text_metadatas):
     client = chromadb.PersistentClient(path="./chroma_db")
     image_dir = f"/tmp/extracted_images/{session_id}"
     os.makedirs(image_dir, exist_ok=True)
@@ -58,7 +58,7 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
             ids_text.append(f"text_chunk_{i}")
             embeddings_text.append(text_embeddings[i].tolist())
             docs_text.append(chunk)
-            metadatas_text.append({'type': 'text'})
+            metadatas_text.append(text_metadatas[i])
             
         for i, (table_markdown, page_num) in enumerate(tables):
             ids_text.append(f"table_{i}")
@@ -92,17 +92,23 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
 
 def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_model, image_embedding_model):
     print("--- Starting PDF Ingestion (Dual Collection) ---")
-    full_text, images, tables = extract_content_from_pdf(file_content)
+    page_texts, images, tables = extract_content_from_pdf(file_content)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    text_chunks = text_splitter.split_text(full_text)
-    unique_chunks = list(set(text_chunks))
+    all_text_chunks = []
+    all_text_metadatas = []
+
+    for text_content, page_num in page_texts:
+        chunks = text_splitter.split_text(text_content)
+        for chunk in chunks:
+            all_text_chunks.append(chunk)
+            all_text_metadatas.append({'type': 'text', 'page': page_num})
     
     text_embeds, image_embeds, table_embeds = generate_embeddings(
-        unique_chunks, images, tables, text_embedding_model, image_embedding_model
+        all_text_chunks, images, tables, text_embedding_model, image_embedding_model
     )
     
     count = store_in_chromadb(
-        session_id, unique_chunks, text_embeds, images, image_embeds, tables, table_embeds
+        session_id, all_text_chunks, text_embeds, images, image_embeds, tables, table_embeds
     )
     print(f"--- Successfully stored {count} items across collections for session '{session_id}' ---")
     return count
@@ -142,12 +148,15 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
     try:
         collection_text = client.get_collection(name=f"{session_id}_text")
         query_embedding_text = text_embedding_model.encode([query]).tolist()
-        results_text = collection_text.query(query_embeddings=query_embedding_text, n_results=5)
+        results_text = collection_text.query(query_embeddings=query_embedding_text, n_results=5, include=["metadatas", "documents"])
         
         if 'ids' in results_text and results_text['ids'][0]:
             for i in range(len(results_text['ids'][0])):
-                doc_id = results_text['ids'][0][i]
                 document = results_text['documents'][0][i]
+                metadata = results_text['metadatas'][0][i]
+                page_num = metadata.get('page', -1) + 1
+                doc_type = metadata.get('type', 'data')
+                citation = f"Source: Page {page_num} ({doc_type})"
                 context_parts.append(f"Source: {doc_id}\nContent: {document}")
     except Exception as e:
         print(f"Could not query text collection for session '{session_id}': {e}")
@@ -155,15 +164,18 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
     try:
         collection_images = client.get_collection(name=f"{session_id}_images")
         query_embedding_image = image_embedding_model.encode([query]).tolist()
-        results_images = collection_images.query(query_embeddings=query_embedding_image, n_results=5)
+        results_images = collection_images.query(query_embeddings=query_embedding_image, n_results=5, include=["metadatas", "documents"])
         
         if 'ids' in results_images and results_images['ids'][0]:
             for i in range(len(results_images['ids'][0])):
-                doc_id = results_images['ids'][0][i]
                 document_path = results_images['documents'][0][i]
-                print(f"  > Analyzing retrieved image: {document_path}...")
+                metadata = results_images["metadatas"][0][i]
+                page_num = metadata.get('page', -1) + 1
+                doc_type = 'image'
+                print(f"  > Analyzing retrieved image: {document_path} (from Page {page_num})...")
                 desc = analyze_image_with_groq(document_path, groq_client)
-                context_parts.append(f"Source: {doc_id}\nContent: {desc}")
+                citation = f"Source: Page {page_num} ({doc_type})"
+                context_parts.append(f"Source: {citation}\nContent: {desc}")
     except Exception as e:
         print(f"Could not query image collection for session '{session_id}': {e}")
         
@@ -184,7 +196,7 @@ Follow these instructions meticulously:
 
 4.  **Structured and Deep Answers:** Avoid vague or superficial responses. If the question asks "what," "why," or "how," provide a well-structured answer with logical flow and sufficient detail. Do not add fluff or filler.
 
-5.  **Cite Your Sources:** After every key piece of information, you MUST cite the source using the format [Source: source_id]. This is a critical requirement.
+5.  **Cite Your Sources:** After every key piece of information, you MUST cite its source using the format [Source: Page X (type)]. For example: [Source: Page 5 (text)] or [Source: Page 12 (image)]. This is a critical requirement.
 
 Your goal is to act as a world-class analyst, providing answers that are not only correct but also insightful, well-supported, and directly derived from the source material.""" 
     user_prompt = f"CONTEXT:\n---\n{formatted_context}\n---\n\nQUESTION:\n{query}"
@@ -193,7 +205,7 @@ Your goal is to act as a world-class analyst, providing answers that are not onl
         stream = groq_client.chat.completions.create(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             model="llama-3.3-70b-versatile",
-            temperature= 0.8,
+            temperature= 0.75,
             stream=True,
         )
         for chunk in stream:
