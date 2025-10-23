@@ -113,11 +113,6 @@ You can interact with the live, hosted version of VectoRead here:
 
 Simply visit the link, upload a PDF, and start asking questions!
 
-💻 Development & Local Setup
-For developers interested in running the project locally or contributing, detailed setup instructions are available in the repository:
-
-➡️ See DEVELOPMENT.md for the full guide.
-
 🛣️ Future Roadmap
 
 [ ] Implement Advanced Re-ranking: Integrate a re-ranking model (e.g., Reciprocal Rank Fusion or a Cross-Encoder) to intelligently merge and score the retrieved results from both the text and image collections, boosting final answer relevance.
