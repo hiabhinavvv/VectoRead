@@ -50,45 +50,69 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
     os.makedirs(image_dir, exist_ok=True)
     
     total_items = 0
-    if len(text_chunks) > 0 or len(tables) > 0:
-        collection_text = client.get_or_create_collection(name=f"{session_id}_text")
-        ids_text, embeddings_text, docs_text, metadatas_text = [], [], [], []
-        
-        for i, chunk in enumerate(text_chunks):
-            ids_text.append(f"text_chunk_{i}")
-            embeddings_text.append(text_embeddings[i].tolist())
-            docs_text.append(chunk)
-            metadatas_text.append(text_metadatas[i])
+    if len(text_chunks) > 0:
+            collection_text = client.get_or_create_collection(name=f"{session_id}_text")
+            ids_text = [f"text_chunk_{i}" for i in range(len(text_chunks))]
+            embeddings_list = [emb.tolist() for emb in text_embeddings]
             
+            collection_text.add(
+                ids=ids_text, 
+                embeddings=embeddings_list, 
+                documents=text_chunks, 
+                metadatas=text_metadatas
+            )
+            total_items += collection_text.count()
+            print(f"Stored {len(text_chunks)} text chunks.")
+
+    if len(tables) > 0:
+        collection_tables = client.get_or_create_collection(name=f"{session_id}_tables")
+        ids_table = []
+        docs_table = []
+        metadatas_table = []
+        embeddings_table_list = [emb.tolist() for emb in table_embeddings]
+
         for i, (table_markdown, page_num) in enumerate(tables):
-            ids_text.append(f"table_{i}")
-            embeddings_text.append(table_embeddings[i].tolist())
-            docs_text.append(table_markdown)
-            metadatas_text.append({'type': 'table', 'page': page_num})
+            ids_table.append(f"table_{i}")
+            docs_table.append(table_markdown)
+            metadatas_table.append({'type': 'table', 'page': page_num})
             
-        collection_text.add(ids=ids_text, embeddings=embeddings_text, documents=docs_text, metadatas=metadatas_text)
-        total_items += collection_text.count()
+        collection_tables.add(
+            ids=ids_table, 
+            embeddings=embeddings_table_list, 
+            documents=docs_table, 
+            metadatas=metadatas_table
+        )
+        total_items += collection_tables.count()
+        print(f"Stored {len(tables)} tables.")
 
     if len(images) > 0:
-        collection_images = client.get_or_create_collection(name=f"{session_id}_images")
-        ids_img, embeddings_img, docs_img, metadatas_img = [], [], [], []
-        
-        for i, (image, page_num) in enumerate(images):
-            try:
-                image_id = f"image_{i}"
-                image_path = os.path.join(image_dir, f"{image_id}.png")
-                image.save(image_path, 'PNG')
-                ids_img.append(image_id)
-                embeddings_img.append(image_embeddings[i].tolist())
-                docs_img.append(image_path)
-                metadatas_img.append({'type': 'image', 'page': page_num})
-            except Exception as e:
-                print(f"WARNING: Skipping a problematic image on page {page_num} during save. Error: {e}")
-        
-        collection_images.add(ids=ids_img, embeddings=embeddings_img, documents=docs_img, metadatas=metadatas_img)
-        total_items += collection_images.count()
-        
-    return total_items
+            collection_images = client.get_or_create_collection(name=f"{session_id}_images")
+            ids_img, embeddings_img, docs_img, metadatas_img = [], [], [], []
+            
+            for i, (image, page_num) in enumerate(images):
+                try:
+                    image_id = f"image_{i}"
+                    image_path = os.path.join(image_dir, f"{image_id}.png")
+                    image.save(image_path, 'PNG')
+                    
+                    ids_img.append(image_id)
+                    embeddings_img.append(image_embeddings[i].tolist())
+                    docs_img.append(image_path) # Storing path as document
+                    metadatas_img.append({'type': 'image', 'page': page_num})
+                except Exception as e:
+                    print(f"WARNING: Skipping image save on page {page_num}. Error: {e}")
+            
+            if ids_img:
+                collection_images.add(
+                    ids=ids_img, 
+                    embeddings=embeddings_img, 
+                    documents=docs_img, 
+                    metadatas=metadatas_img
+                )
+                total_items += collection_images.count()
+                print(f"Stored {len(ids_img)} images.")
+            
+            return total_items
 
 def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_model, image_embedding_model):
     print("--- Starting PDF Ingestion (Dual Collection) ---")
@@ -144,40 +168,64 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
     print("\n--- Processing Query (Dual Collection) ---")
     client = chromadb.PersistentClient(path="./chroma_db")
     context_parts = []
+    query_embedding_text = text_embedding_model.encode([query]).tolist()
+    query_embedding_image = image_embedding_model.encode([query]).tolist()
     
     try:
         collection_text = client.get_collection(name=f"{session_id}_text")
-        query_embedding_text = text_embedding_model.encode([query]).tolist()
-        results_text = collection_text.query(query_embeddings=query_embedding_text, n_results=5, include=["metadatas", "documents"])
-        
-        if 'ids' in results_text and results_text['ids'][0]:
+        results_text = collection_text.query(
+            query_embeddings=query_embedding_text, 
+            n_results=5, 
+            include=["metadatas", "documents"]
+        )
+        if results_text['ids'] and results_text['ids'][0]:
             for i in range(len(results_text['ids'][0])):
-                document = results_text['documents'][0][i]
-                metadata = results_text['metadatas'][0][i]
-                page_num = metadata.get('page', -1) + 1
-                doc_type = metadata.get('type', 'text')
-                citation = f"Source: Page {page_num} ({doc_type})"
-                context_parts.append(f"{citation}\nContent: {document}")
+                doc = results_text['documents'][0][i]
+                meta = results_text['metadatas'][0][i]
+                citation = f"Source: Page {meta.get('page', '?') + 1} (text)"
+                context_parts.append(f"{citation}\nContent: {doc}")
     except Exception as e:
-        print(f"Could not query text collection for session '{session_id}': {e}")
+        print(f"Text retrieval error: {e}")
 
+    # --- B. Retrieve Tables (NEW) ---
+    try:
+        collection_tables = client.get_collection(name=f"{session_id}_tables")
+        # We use the SAME query_embedding_text because tables were embedded with the text model
+        results_tables = collection_tables.query(
+            query_embeddings=query_embedding_text, 
+            n_results=3, # Usually need fewer tables than text chunks
+            include=["metadatas", "documents"]
+        )
+        if results_tables['ids'] and results_tables['ids'][0]:
+            for i in range(len(results_tables['ids'][0])):
+                doc = results_tables['documents'][0][i]
+                meta = results_tables['metadatas'][0][i]
+                citation = f"Source: Page {meta.get('page', '?') + 1} (table)"
+                context_parts.append(f"{citation}\nContent: {doc}")
+    except Exception as e:
+        print(f"Table retrieval error (or collection empty): {e}")
+
+    # --- C. Retrieve Images ---
     try:
         collection_images = client.get_collection(name=f"{session_id}_images")
-        query_embedding_image = image_embedding_model.encode([query]).tolist()
-        results_images = collection_images.query(query_embeddings=query_embedding_image, n_results=5, include=["metadatas", "documents"])
-        
-        if 'ids' in results_images and results_images['ids'][0]:
+        results_images = collection_images.query(
+            query_embeddings=query_embedding_image, 
+            n_results=3, 
+            include=["metadatas", "documents"]
+        )
+        if results_images['ids'] and results_images['ids'][0]:
             for i in range(len(results_images['ids'][0])):
-                document_path = results_images['documents'][0][i]
-                metadata = results_images["metadatas"][0][i]
-                page_num = metadata.get('page', -1) + 1
-                doc_type = 'image'
-                print(f"  > Analyzing retrieved image: {document_path} (from Page {page_num})...")
-                desc = analyze_image_with_groq(document_path, groq_client)
-                citation = f"Source: Page {page_num} ({doc_type})"
-                context_parts.append(f"Source: {citation}\nContent: {desc}")
+                path = results_images['documents'][0][i]
+                meta = results_images["metadatas"][0][i]
+                page_num = meta.get('page', -1) + 1
+                
+                print(f"  > Analyzing retrieved image: {path} (from Page {page_num})...")
+                desc = analyze_image_with_groq(path, groq_client)
+                
+                citation = f"Source: Page {page_num} (image)"
+                context_parts.append(f"{citation}\nContent: {desc}")
     except Exception as e:
-        print(f"Could not query image collection for session '{session_id}': {e}")
+        print(f"Image retrieval error (or collection empty): {e}")
         
     if not context_parts:
         yield "Could not find relevant context to answer the question."
