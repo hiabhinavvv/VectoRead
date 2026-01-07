@@ -15,26 +15,42 @@ load_dotenv()
 def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
     doc = fitz.open(stream=file_content, filetype="pdf")
     page_texts, images, tables = [], [], []
+
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
-        page_texts.append((page.get_text(), page_num))
+        page_tables = []
+        for table in page.find_tables():
+            md = table.to_markdown(clean=True)
+            page_tables.append(md)
+            tables.append((md, page_num))
+        page_text = page.get_text()
+
+        for table_md in page_tables:
+            page_text = page_text.replace(table_md, "")
+
+        page_texts.append((page_text, page_num))
+
         for img_index, img in enumerate(page.get_images(full=True)):
             xref = img[0]
             try:
                 base_image = doc.extract_image(xref)
                 if not base_image or "image" not in base_image or not base_image["image"]:
                     continue
+
                 image_bytes = base_image["image"]
                 image = Image.open(io.BytesIO(image_bytes))
+
                 if image.width < min_image_size or image.height < min_image_size:
                     continue
+
                 images.append((image, page_num))
+
             except Exception as e:
                 print(f"WARNING: Skipping a problematic image on page {page_num}. Error: {e}")
                 continue
-        for table in page.find_tables():
-            tables.append((table.to_markdown(clean=True), page_num))
+
     return page_texts, images, tables
+
 
 def generate_embeddings(text_chunks, images, tables, text_model, image_model):
     text_embeddings = text_model.encode(text_chunks) if text_chunks else np.array([])
@@ -97,7 +113,7 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
                     
                     ids_img.append(image_id)
                     embeddings_img.append(image_embeddings[i].tolist())
-                    docs_img.append(image_path) # Storing path as document
+                    docs_img.append(image_path)
                     metadatas_img.append({'type': 'image', 'page': page_num})
                 except Exception as e:
                     print(f"WARNING: Skipping image save on page {page_num}. Error: {e}")
@@ -112,7 +128,7 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
                 total_items += collection_images.count()
                 print(f"Stored {len(ids_img)} images.")
             
-            return total_items
+    return total_items
 
 def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_model, image_embedding_model):
     print("--- Starting PDF Ingestion (Dual Collection) ---")
@@ -175,7 +191,7 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
         collection_text = client.get_collection(name=f"{session_id}_text")
         results_text = collection_text.query(
             query_embeddings=query_embedding_text, 
-            n_results=5, 
+            n_results=3, 
             include=["metadatas", "documents"]
         )
         if results_text['ids'] and results_text['ids'][0]:
@@ -187,13 +203,11 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
     except Exception as e:
         print(f"Text retrieval error: {e}")
 
-    # --- B. Retrieve Tables (NEW) ---
     try:
         collection_tables = client.get_collection(name=f"{session_id}_tables")
-        # We use the SAME query_embedding_text because tables were embedded with the text model
         results_tables = collection_tables.query(
             query_embeddings=query_embedding_text, 
-            n_results=3, # Usually need fewer tables than text chunks
+            n_results=1,
             include=["metadatas", "documents"]
         )
         if results_tables['ids'] and results_tables['ids'][0]:
@@ -205,12 +219,11 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
     except Exception as e:
         print(f"Table retrieval error (or collection empty): {e}")
 
-    # --- C. Retrieve Images ---
     try:
         collection_images = client.get_collection(name=f"{session_id}_images")
         results_images = collection_images.query(
             query_embeddings=query_embedding_image, 
-            n_results=3, 
+            n_results=1, 
             include=["metadatas", "documents"]
         )
         if results_images['ids'] and results_images['ids'][0]:
