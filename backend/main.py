@@ -34,23 +34,44 @@ def read_root():
     return {"status": "Multimodal RAG API is running"}
 
 @app.post("/ingest", response_model=IngestResponse)
-async def ingest_pdf(file: UploadFile = File(...)):
-    if file.content_type != 'application/pdf':
-        raise HTTPException(status_code=400, detail="Invalid file type.")
+async def ingest_file(file: UploadFile = File(...)):
     try:
         session_id = str(uuid.uuid4())
         file_content = await file.read()
-        
-        item_count = rag_logic.process_and_store_pdf(
-            session_id=session_id,
-            file_content=file_content,
-            text_embedding_model=model_cache["text_model"],
-            image_embedding_model=model_cache["image_model"]
+        filename = file.filename.lower()
+
+        if filename.endswith(".pdf"):
+            item_count = rag_logic.process_and_store_pdf(
+                session_id=session_id,
+                file_content=file_content,
+                text_embedding_model=model_cache["text_model"],
+                image_embedding_model=model_cache["image_model"]
+            )
+
+        elif filename.endswith(".csv"):
+            item_count = rag_logic.process_and_store_csv(
+                session_id=session_id,
+                file_content=file_content,
+                text_embedding_model=model_cache["text_model"]
+            )
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file type. Only PDF and CSV are supported."
+            )
+
+        return IngestResponse(
+            message=f"Successfully ingested '{file.filename}'",
+            item_count=item_count,
+            session_id=session_id
         )
-        
-        return IngestResponse(message=f"Successfully ingested '{file.filename}'", item_count=item_count, session_id=session_id)
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred during ingestion: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred during ingestion: {str(e)}"
+        )
 
 @app.post("/query")
 async def handle_query(request: QueryRequest):

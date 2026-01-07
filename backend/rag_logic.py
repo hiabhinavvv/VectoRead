@@ -9,8 +9,16 @@ import io
 import os
 from groq import Groq
 from dotenv import load_dotenv
+import csv
 
 load_dotenv()
+
+def collection_exists(client, name: str) -> bool:
+    try:
+        client.get_collection(name)
+        return True
+    except:
+        return False
 
 def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
     doc = fitz.open(stream=file_content, filetype="pdf")
@@ -50,6 +58,20 @@ def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
                 continue
 
     return page_texts, images, tables
+
+def extract_content_from_csv(file_content: bytes):
+    decoded = file_content.decode("utf-8").splitlines()
+    reader = csv.DictReader(decoded)
+
+    rows = []
+    for row_idx, row in enumerate(reader):
+        rows.append((row, row_idx))
+
+    return rows
+
+
+def serialize_csv_row(row: dict):
+    return "; ".join([f"{k}={v}" for k, v in row.items()])
 
 
 def generate_embeddings(text_chunks, images, tables, text_model, image_model):
@@ -153,6 +175,41 @@ def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_m
     print(f"--- Successfully stored {count} items across collections for session '{session_id}' ---")
     return count
 
+def process_and_store_csv(
+    session_id: str,
+    file_content: bytes,
+    text_embedding_model
+):
+    print("--- Starting CSV Ingestion ---")
+
+    client = chromadb.PersistentClient(path="./chroma_db")
+    rows = extract_content_from_csv(file_content)
+
+    if not rows:
+        print("No rows found in CSV.")
+        return 0
+
+    texts = [serialize_csv_row(row) for row, _ in rows]
+    embeddings = text_embedding_model.encode(texts)
+
+    collection_tables = client.get_or_create_collection(
+        name=f"{session_id}_tables"
+    )
+
+    collection_tables.add(
+        ids=[f"csv_row_{i}" for i in range(len(texts))],
+        documents=texts,
+        embeddings=[e.tolist() for e in embeddings],
+        metadatas=[
+            {"type": "table", "row": i, "source": "csv"}
+            for i in range(len(texts))
+        ]
+    )
+
+    print(f"Stored {len(texts)} CSV rows as table entries.")
+    return len(texts)
+
+
 
 def analyze_image_with_groq(image_path: str, groq_client: Groq):
     try:
@@ -188,57 +245,82 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
     query_embedding_image = image_embedding_model.encode([query]).tolist()
     
     try:
-        collection_text = client.get_collection(name=f"{session_id}_text")
-        results_text = collection_text.query(
-            query_embeddings=query_embedding_text, 
-            n_results=3, 
-            include=["metadatas", "documents"]
-        )
-        if results_text['ids'] and results_text['ids'][0]:
-            for i in range(len(results_text['ids'][0])):
-                doc = results_text['documents'][0][i]
-                meta = results_text['metadatas'][0][i]
-                citation = f"Source: Page {meta.get('page', '?') + 1} (text)"
-                context_parts.append(f"{citation}\nContent: {doc}")
+        if collection_exists(client, f"{session_id}_text"):
+            collection_text = client.get_collection(name=f"{session_id}_text")
+            results_text = collection_text.query(
+                query_embeddings=query_embedding_text,
+                n_results=3,
+                include=["metadatas", "documents"]
+            )
+
+            if results_text["ids"] and results_text["ids"][0]:
+                for doc, meta in zip(
+                    results_text["documents"][0],
+                    results_text["metadatas"][0]
+                ):
+                    page = meta.get("page")
+                    if isinstance(page, int):
+                        citation = f"Source: Page {page + 1} (text)"
+                    else:
+                        citation = "Source: Text"
+
+                    context_parts.append(f"{citation}\nContent: {doc}")
     except Exception as e:
         print(f"Text retrieval error: {e}")
 
     try:
-        collection_tables = client.get_collection(name=f"{session_id}_tables")
-        results_tables = collection_tables.query(
-            query_embeddings=query_embedding_text, 
-            n_results=1,
-            include=["metadatas", "documents"]
-        )
-        if results_tables['ids'] and results_tables['ids'][0]:
-            for i in range(len(results_tables['ids'][0])):
-                doc = results_tables['documents'][0][i]
-                meta = results_tables['metadatas'][0][i]
-                citation = f"Source: Page {meta.get('page', '?') + 1} (table)"
-                context_parts.append(f"{citation}\nContent: {doc}")
+        if collection_exists(client, f"{session_id}_tables"):
+            collection_tables = client.get_collection(name=f"{session_id}_tables")
+            results_tables = collection_tables.query(
+                query_embeddings=query_embedding_text,
+                n_results=1,
+                include=["metadatas", "documents"]
+            )
+
+            if results_tables["ids"] and results_tables["ids"][0]:
+                for doc, meta in zip(
+                    results_tables["documents"][0],
+                    results_tables["metadatas"][0]
+                ):
+                    page = meta.get("page")
+
+                    if isinstance(page, int):
+                        citation = f"Source: Page {page + 1} (table)"
+                    else:
+                        # CSV rows have no page
+                        citation = "Source: Table (CSV)"
+
+                    context_parts.append(f"{citation}\nContent: {doc}")
     except Exception as e:
-        print(f"Table retrieval error (or collection empty): {e}")
+        print(f"Table retrieval error: {e}")
 
     try:
-        collection_images = client.get_collection(name=f"{session_id}_images")
-        results_images = collection_images.query(
-            query_embeddings=query_embedding_image, 
-            n_results=1, 
-            include=["metadatas", "documents"]
-        )
-        if results_images['ids'] and results_images['ids'][0]:
-            for i in range(len(results_images['ids'][0])):
-                path = results_images['documents'][0][i]
-                meta = results_images["metadatas"][0][i]
-                page_num = meta.get('page', -1) + 1
-                
-                print(f"  > Analyzing retrieved image: {path} (from Page {page_num})...")
-                desc = analyze_image_with_groq(path, groq_client)
-                
-                citation = f"Source: Page {page_num} (image)"
-                context_parts.append(f"{citation}\nContent: {desc}")
+        if collection_exists(client, f"{session_id}_images"):
+            collection_images = client.get_collection(name=f"{session_id}_images")
+            results_images = collection_images.query(
+                query_embeddings=query_embedding_image,
+                n_results=1,
+                include=["metadatas", "documents"]
+            )
+
+            if results_images["ids"] and results_images["ids"][0]:
+                for path, meta in zip(
+                    results_images["documents"][0],
+                    results_images["metadatas"][0]
+                ):
+                    page = meta.get("page")
+                    if isinstance(page, int):
+                        citation = f"Source: Page {page + 1} (image)"
+                    else:
+                        citation = "Source: Image"
+
+                    print(f"  > Analyzing retrieved image: {path}")
+                    desc = analyze_image_with_groq(path, groq_client)
+
+                    context_parts.append(f"{citation}\nContent: {desc}")
     except Exception as e:
-        print(f"Image retrieval error (or collection empty): {e}")
+        print(f"Image retrieval error: {e}")
+
         
     if not context_parts:
         yield "Could not find relevant context to answer the question."
