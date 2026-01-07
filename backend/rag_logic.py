@@ -252,7 +252,7 @@ Your goal is to act as a world-class analyst, providing answers that are not onl
     try:
         stream = groq_client.chat.completions.create(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature= 0.75,
             stream=True,
         )
