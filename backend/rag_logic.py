@@ -155,7 +155,7 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
 def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_model, image_embedding_model):
     print("--- Starting PDF Ingestion (Dual Collection) ---")
     page_texts, images, tables = extract_content_from_pdf(file_content)
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=100)
     all_text_chunks = []
     all_text_metadatas = []
 
