@@ -431,7 +431,7 @@ def process_query_and_generate(
 
             res = tables.query(
                 query_embeddings=query_embedding,
-                n_results=50,
+                n_results=10,
                 include=["documents"]
             )
 
