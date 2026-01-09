@@ -10,6 +10,7 @@ import os
 from groq import Groq
 from dotenv import load_dotenv
 import csv
+import json
 
 load_dotenv()
 
@@ -36,7 +37,9 @@ def extract_content_from_pdf(file_content: bytes, min_image_size: int = 100):
         for table_md in page_tables:
             page_text = page_text.replace(table_md, "")
 
-        page_texts.append((page_text, page_num))
+        headings = extract_headings_from_page(page)
+
+        page_texts.append((page_text, page_num, headings))
 
         for img_index, img in enumerate(page.get_images(full=True)):
             xref = img[0]
@@ -73,6 +76,72 @@ def extract_content_from_csv(file_content: bytes):
 def serialize_csv_row(row: dict):
     return "; ".join([f"{k}={v}" for k, v in row.items()])
 
+def extract_headings_from_page(page):
+    headings = []
+    blocks = page.get_text("dict")["blocks"]
+
+    for block in blocks:
+        if "lines" not in block:
+            continue
+        for line in block["lines"]:
+            text = " ".join(span["text"] for span in line["spans"]).strip()
+            if not text:
+                continue
+
+            font_sizes = [span["size"] for span in line["spans"]]
+            avg_size = sum(font_sizes) / len(font_sizes)
+
+            if avg_size >= 14 or text.isupper():
+                headings.append(text)
+
+    return headings
+
+def store_section_index(
+    session_id: str,
+    page_texts,
+    text_embedding_model
+):
+    client = chromadb.PersistentClient(path="./chroma_db")
+
+    collection = client.get_or_create_collection(
+        name=f"{session_id}_sections"
+    )
+
+    section_docs = []
+    section_metadatas = []
+
+    seen = set()
+
+    for _, page_num, headings in page_texts:
+        for heading in headings:
+            heading = heading.strip().title()
+            key = (heading.lower(), page_num)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            section_docs.append(heading)
+            section_metadatas.append({
+                "type": "section",
+                "page": page_num,
+                "section": heading
+            })
+
+    if not section_docs:
+        print("No sections found for section index.")
+        return 0
+
+    embeddings = text_embedding_model.encode(section_docs)
+
+    collection.add(
+        ids=[f"section_{i}" for i in range(len(section_docs))],
+        documents=section_docs,
+        embeddings=[e.tolist() for e in embeddings],
+        metadatas=section_metadatas
+    )
+
+    print(f"Stored {len(section_docs)} sections in section index.")
+    return len(section_docs)
 
 def generate_embeddings(text_chunks, images, tables, text_model, image_model):
     text_embeddings = text_model.encode(text_chunks) if text_chunks else np.array([])
@@ -155,16 +224,19 @@ def store_in_chromadb(session_id: str, text_chunks, text_embeddings, images, ima
 def process_and_store_pdf(session_id: str, file_content: bytes, text_embedding_model, image_embedding_model):
     print("--- Starting PDF Ingestion (Dual Collection) ---")
     page_texts, images, tables = extract_content_from_pdf(file_content)
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=100)
+    store_section_index(session_id, page_texts, text_embedding_model)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     all_text_chunks = []
     all_text_metadatas = []
+    current_section = None
 
-    for text_content, page_num in page_texts:
+    for text_content, page_num, headings in page_texts:
+        if headings:
+            current_section = headings[0]
         chunks = text_splitter.split_text(text_content)
         for chunk in chunks:
             all_text_chunks.append(chunk)
-            all_text_metadatas.append({'type': 'text', 'page': page_num})
-    
+            all_text_metadatas.append({'type': 'text', 'page': page_num, 'section': current_section})
     text_embeds, image_embeds, table_embeds = generate_embeddings(
         all_text_chunks, images, tables, text_embedding_model, image_embedding_model
     )
@@ -235,96 +307,186 @@ def analyze_image_with_groq(image_path: str, groq_client: Groq):
         return completion.choices[0].message.content if completion.choices else "VLM analysis failed."
     except Exception as e:
         return f"Error during Groq vision call: {e}"
-
-
-def process_query_and_generate(query: str, session_id: str, text_embedding_model, image_embedding_model, groq_client):
-    print("\n--- Processing Query (Dual Collection) ---")
-    client = chromadb.PersistentClient(path="./chroma_db")
-    context_parts = []
-    query_embedding_text = text_embedding_model.encode([query]).tolist()
-    query_embedding_image = image_embedding_model.encode([query]).tolist()
     
+def plan_query_with_llm(query: str, groq_client: Groq):
+    prompt = f"""
+You are a query planner for a document intelligence system.
+
+Classify the user query and decide retrieval strategy.
+
+Return EXACTLY one JSON object.
+No markdown.
+No explanations.
+No extra text.
+
+The response MUST match this schema exactly:
+
+{{
+  "intent": "section_lookup" | "factual_lookup" | "table_lookup" | "image_lookup" | "broad_search"
+}}
+
+Rules:
+- Use section_lookup for definitions, concepts, lifecycle, phases
+- Use factual_lookup for numbers, values, metrics
+- Use table_lookup for CSV or tabular data
+- Use image_lookup for diagrams or figures
+
+You MUST choose the single most appropriate intent.
+broad_search is allowed ONLY if the query is vague or exploratory.
+DO NOT default to broad_search.
+
+
+User query:
+"{query}"
+"""
     try:
-        if collection_exists(client, f"{session_id}_text"):
-            collection_text = client.get_collection(name=f"{session_id}_text")
-            results_text = collection_text.query(
-                query_embeddings=query_embedding_text,
-                n_results=3,
-                include=["metadatas", "documents"]
-            )
+        completion = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            temperature=0,
+            messages=[
+                {"role": "system", "content": "You are a strict JSON classifier. Output ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ]
+        )
 
-            if results_text["ids"] and results_text["ids"][0]:
-                for doc, meta in zip(
-                    results_text["documents"][0],
-                    results_text["metadatas"][0]
-                ):
-                    page = meta.get("page")
-                    if isinstance(page, int):
-                        citation = f"Source: Page {page + 1} (text)"
-                    else:
-                        citation = "Source: Text"
+        raw = completion.choices[0].message.content.strip()
+        print("[Planner RAW]:", raw)
 
-                    context_parts.append(f"{citation}\nContent: {doc}")
-    except Exception as e:
-        print(f"Text retrieval error: {e}")
-
-    try:
-        if collection_exists(client, f"{session_id}_tables"):
-            collection_tables = client.get_collection(name=f"{session_id}_tables")
-            results_tables = collection_tables.query(
-                query_embeddings=query_embedding_text,
-                n_results=1,
-                include=["metadatas", "documents"]
-            )
-
-            if results_tables["ids"] and results_tables["ids"][0]:
-                for doc, meta in zip(
-                    results_tables["documents"][0],
-                    results_tables["metadatas"][0]
-                ):
-                    page = meta.get("page")
-
-                    if isinstance(page, int):
-                        citation = f"Source: Page {page + 1} (table)"
-                    else:
-                        # CSV rows have no page
-                        citation = "Source: Table (CSV)"
-
-                    context_parts.append(f"{citation}\nContent: {doc}")
-    except Exception as e:
-        print(f"Table retrieval error: {e}")
-
-    try:
-        if collection_exists(client, f"{session_id}_images"):
-            collection_images = client.get_collection(name=f"{session_id}_images")
-            results_images = collection_images.query(
-                query_embeddings=query_embedding_image,
-                n_results=1,
-                include=["metadatas", "documents"]
-            )
-
-            if results_images["ids"] and results_images["ids"][0]:
-                for path, meta in zip(
-                    results_images["documents"][0],
-                    results_images["metadatas"][0]
-                ):
-                    page = meta.get("page")
-                    if isinstance(page, int):
-                        citation = f"Source: Page {page + 1} (image)"
-                    else:
-                        citation = "Source: Image"
-
-                    print(f"  > Analyzing retrieved image: {path}")
-                    desc = analyze_image_with_groq(path, groq_client)
-
-                    context_parts.append(f"{citation}\nContent: {desc}")
-    except Exception as e:
-        print(f"Image retrieval error: {e}")
-
+        plan = json.loads(raw)
+        assert plan["intent"] in {
+            "section_lookup",
+            "factual_lookup",
+            "table_lookup",
+            "image_lookup",
+            "broad_search"
+        }
         
+        return plan
+    
+    except Exception as e:
+        print(f"[Planner Fallback] {e}")
+        return {"intent": "broad_search"}
+
+
+def process_query_and_generate(
+    query: str,
+    session_id: str,
+    text_embedding_model,
+    image_embedding_model,
+    groq_client
+):
+    print("\n--- Processing Query (Agentic RAG – Stable) ---")
+    client = chromadb.PersistentClient(path="./chroma_db")
+
+    plan = plan_query_with_llm(query, groq_client)
+    intent = plan.get("intent", "broad_search")
+    q = query.lower()
+
+    print(f"[Planner] Intent: {intent}")
+
+    context_parts = []
+
+    if intent == "section_lookup" and collection_exists(client, f"{session_id}_sections"):
+        try:
+            sections = client.get_collection(f"{session_id}_sections")
+            query_embedding = text_embedding_model.encode([query]).tolist()
+
+            res = sections.query(
+                query_embeddings=query_embedding,
+                n_results=1,
+                include=["metadatas"]
+            )
+
+            if res["metadatas"] and res["metadatas"][0]:
+                page = res["metadatas"][0][0]["page"]
+                print(f"[Router] Section → Page {page + 1}")
+
+                if collection_exists(client, f"{session_id}_text"):
+                    text_col = client.get_collection(f"{session_id}_text")
+                    page_chunks = text_col.query(
+                        query_embeddings=query_embedding,
+                        where={"page": page},
+                        n_results=20,
+                        include=["documents", "metadatas"]
+                    )
+
+                    print(
+    f"[Router] Retrieved {len(page_chunks['documents'][0])} chunks from Page {page + 1}"
+)
+
+                    for doc, meta in zip(
+                        page_chunks["documents"][0],
+                        page_chunks["metadatas"][0]
+                    ):
+                        context_parts.append(
+                            f"Source: Page {meta['page'] + 1} (text)\nContent: {doc}"
+                        )
+        except Exception as e:
+            print(f"[Section Error] {e}")
+
+    elif intent == "table_lookup" and collection_exists(client, f"{session_id}_tables"):
+        try:
+            tables = client.get_collection(f"{session_id}_tables")
+            query_embedding = text_embedding_model.encode([query]).tolist()
+
+            res = tables.query(
+                query_embeddings=query_embedding,
+                n_results=50,
+                include=["documents"]
+            )
+
+            for doc in res["documents"][0]:
+                context_parts.append(f"Source: Table\nContent: {doc}")
+        except Exception as e:
+            print(f"[Table Error] {e}")
+
+    elif intent == "image_lookup" and collection_exists(client, f"{session_id}_images"):
+        try:
+            images = client.get_collection(f"{session_id}_images")
+            query_embedding = image_embedding_model.encode([query]).tolist()
+
+            res = images.query(
+                query_embeddings=query_embedding,
+                n_results=2,
+                include=["documents", "metadatas"]
+            )
+
+            for path, meta in zip(res["documents"][0], res["metadatas"][0]):
+                desc = analyze_image_with_groq(path, groq_client)
+                context_parts.append(
+                    f"Source: Page {meta['page'] + 1} (image)\nContent: {desc}"
+                )
+        except Exception as e:
+            print(f"[Image Error] {e}")
+
     if not context_parts:
-        yield "Could not find relevant context to answer the question."
-        return
+        print("[Fallback] Capability-aware search")
+
+        if collection_exists(client, f"{session_id}_text"):
+            text_col = client.get_collection(f"{session_id}_text")
+            query_embedding = text_embedding_model.encode([query]).tolist()
+
+            res = text_col.query(
+                query_embeddings=query_embedding,
+                n_results=5,
+                include=["documents", "metadatas"]
+            )
+
+            for doc, meta in zip(res["documents"][0], res["metadatas"][0]):
+                context_parts.append(
+                    f"Source: Page {meta['page'] + 1} (text)\nContent: {doc}"
+                )
+
+        elif collection_exists(client, f"{session_id}_tables"):
+            tables = client.get_collection(f"{session_id}_tables")
+            res = tables.get(include=["documents"])
+
+            for doc in res["documents"]:
+                context_parts.append(f"Source: Table\nContent: {doc}")
+
+        else:
+            yield "No data available for this session."
+            return
         
     formatted_context = "\n---\n".join(context_parts)
     system_prompt = """System Prompt: Geospatial Intelligence Analyst
