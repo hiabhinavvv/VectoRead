@@ -479,9 +479,12 @@ def process_query_and_generate(
 
         elif collection_exists(client, f"{session_id}_tables"):
             tables = client.get_collection(f"{session_id}_tables")
-            res = tables.query(include=["documents"])
+            res = tables.query(
+                query_embeddings=query_embedding,
+                n_results = 10,
+                include=["documents"])
 
-            for doc in res["documents"]:
+            for doc in res["documents"][0]:
                 context_parts.append(f"Source: Table\nContent: {doc}")
 
         else:
