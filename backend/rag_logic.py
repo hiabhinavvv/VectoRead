@@ -236,13 +236,68 @@ def analyze_image_with_groq(image_path: str, groq_client: Groq):
     except Exception as e:
         return f"Error during Groq vision call: {e}"
 
+def rewrite_query(user_query: str, groq_client) -> str:
+    
+    system_prompt = """You are a query normalization engine for a vector search system.
+
+                    TASK:
+                    - Fix spelling mistakes ONLY.
+                    - Normalize casing if needed.
+                    - Preserve the original meaning exactly.
+
+                    STRICT RULES:
+                    - DO NOT expand abbreviations.
+                    - DO NOT explain acronyms.
+                    - DO NOT add or remove words unless required for spelling.
+                    - DO NOT infer intent.
+                    - DO NOT rewrite into a sentence.
+                    - DO NOT add arrows, brackets, or descriptions.
+                    - If unsure, return the query EXACTLY as given.
+
+                    OUTPUT FORMAT:
+                    - Output ONLY the corrected query.
+                    - No punctuation changes unless required.
+                    - No extra text.
+
+                    EXAMPLES:
+                    Input: "silchar assam"
+                    Output: "Silchar Assam"
+
+                    Input: "dishad garden"
+                    Output: "dilshad garden"
+"""
+    
+    try:
+        completion = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_query}
+            ],
+            temperature=0,
+        )
+        cleaned_query = completion.choices[0].message.content.strip()
+        
+        if not cleaned_query: 
+            return user_query
+            
+        print(f"  > Rewritten Query: '{cleaned_query}' (Original: '{user_query}')")
+        return cleaned_query
+        
+    except Exception as e:
+        print(f"Query rewriting failed: {e}")
+        return user_query
 
 def process_query_and_generate(query: str, session_id: str, text_embedding_model, image_embedding_model, groq_client):
     print("\n--- Processing Query (Dual Collection) ---")
+    
+    cleaned_query = rewrite_query(query, groq_client)
+    
     client = chromadb.PersistentClient(path="./chroma_db")
     context_parts = []
-    query_embedding_text = text_embedding_model.encode([query]).tolist()
-    query_embedding_image = image_embedding_model.encode([query]).tolist()
+    
+    query_embedding_text = text_embedding_model.encode([cleaned_query]).tolist()
+    query_embedding_image = image_embedding_model.encode([cleaned_query]).tolist()
     
     try:
         if collection_exists(client, f"{session_id}_text"):
@@ -327,6 +382,7 @@ def process_query_and_generate(query: str, session_id: str, text_embedding_model
         return
         
     formatted_context = "\n---\n".join(context_parts)
+    
     system_prompt = """System Prompt: Geospatial Intelligence Analyst
 
 You are a highly intelligent, expert AI assistant specializing in geospatial intelligence and location-based analytics. Your primary responsibility is to analyze, synthesize, and reason strictly from the provided context to answer user queries related to locations, regions, spatial entities, and business-relevant geographic insights.
@@ -425,7 +481,8 @@ Examples:
 [Source: Page 3 (table)]
 
 [Source: Page 7 (text)]""" 
-    user_prompt = f"CONTEXT:\n---\n{formatted_context}\n---\n\nQUESTION:\n{query}"
+    
+    user_prompt = f"CONTEXT:\n---\n{formatted_context}\n---\n\nQUESTION:\n{cleaned_query}"
     
     try:
         stream = groq_client.chat.completions.create(

@@ -45,7 +45,7 @@ async def ingest_file(file: UploadFile = File(...)):
                 session_id=session_id,
                 file_content=file_content,
                 text_embedding_model=model_cache["text_model"],
-                image_embedding_model=model_cache["image_model"]
+                image_embedding_model=model_cache["image_model"],
             )
 
         elif filename.endswith(".csv"):
